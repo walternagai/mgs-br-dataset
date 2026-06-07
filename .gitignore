@@ -11,6 +11,9 @@ dataset/train-MGS.csv
 dataset/test-MGS.csv
 dataset/*.parquet
 
+# Ambiente
+.env
+
 # Saídas geradas — reproduzidas executando adapt_dataset.py
 dataset/train-MGS-BR.csv
 dataset/test-MGS-BR.csv

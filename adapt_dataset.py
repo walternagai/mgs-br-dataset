@@ -20,6 +20,9 @@ from datetime import datetime
 
 import pandas as pd
 from tqdm import tqdm
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ---------------------------------------------------------------------------
 # Presets de provedores

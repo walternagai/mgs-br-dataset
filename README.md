@@ -6,11 +6,11 @@ Converte o dataset **MGS** (Multi-Grain Stereotypes) — originalmente em inglê
 
 ```bash
 # 1. Clone e configure o ambiente
-git clone <repo-url> && cd PVA766-2026
+git clone <repo-url> && cd mgs-br-dataset
 make setup
 
 # 2. Teste o pipeline em 20 linhas (requer Ollama — https://ollama.com)
-ollama pull llama3.2
+ollama pull qwen2.5:7b
 make sample
 
 # 3. Para processar os datasets completos (requer chave da API)
@@ -31,6 +31,7 @@ make help   # lista todos os alvos disponíveis
 |---|---|---|
 | `dataset/train-MGS.csv` | 42.201 | StereoSet (intra/inter-sentence) + CrowS-Pairs |
 | `dataset/test-MGS.csv` | 10.550 | idem |
+| `dataset/sample-MGS.csv` | 20 | Amostra para teste rápido |
 
 **Colunas originais:** `text_with_marker`, `text_no_marker`, `label`, `stereotype_type`, `binary_class`, `multi_class`, `original_dataset`
 
@@ -38,7 +39,7 @@ make help   # lista todos os alvos disponíveis
 
 ## Dataset de saída
 
-Os arquivos `dataset/train-MGS-BR.csv` e `dataset/test-MGS-BR.csv` acrescentam sete colunas:
+Os arquivos `dataset/*-MGS-BR.csv` acrescentam sete colunas:
 
 | Coluna | Tipo | Descrição |
 |---|---|---|
@@ -222,6 +223,7 @@ O dataset original usa categorias americanas (Civil Rights Act, Equal Pay Act). 
 |---|---|
 | `dataset/train-MGS-BR.csv` | Dataset de treino adaptado |
 | `dataset/test-MGS-BR.csv` | Dataset de teste adaptado |
+| `dataset/sample-MGS-BR.csv` | Amostra de teste adaptada |
 | `dataset/adaptation-decisions.md` | Log de decisões agrupado por classe |
 | `.checkpoints/*.jsonl` | Checkpoints para retomada (podem ser removidos após conclusão) |
 
@@ -245,3 +247,5 @@ Dois ciclos de teste executados — o segundo com as correções de normalizaç�
 **Problema detectado no 1º ciclo e corrigido:** `llama3.2:latest` ignorou a instrução de usar chaves EN e retornou `raça`, `gênero`, `profissão`. O dicionário `_TYPE_NORM` em `merge_results()` corrige isso automaticamente a partir do 2º ciclo.
 
 **Limitação de qualidade do llama3.2:** classificou estereótipos de gênero como `crime_racismo` com referência a leis de raça. Para o dataset completo, recomenda-se um modelo maior (`gemma3:27b`, `sabia-3`, `claude-haiku-4-5`).
+
+> **Nota:** O modelo padrão do provedor Ollama no script foi atualizado para `qwen2.5:7b`. Para usar `llama3.2`, execute `make sample OLLAMA_MODEL=llama3.2:latest` ou passe `--model llama3.2:latest`.

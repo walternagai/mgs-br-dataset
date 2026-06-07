@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MGS Dataset - Dashboard de Estatística Descritiva</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0f172a;--card:#1e293b;--card2:#334155;--accent:#38bdf8;--accent2:#818cf8;--green:#4ade80;--red:#f87171;--yellow:#fbbf24;--orange:#fb923c;--pink:#f472b6;--text:#e2e8f0;--muted:#94a3b8;--border:#475569}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-apple-system,sans-serif;min-height:100vh}
+.header{background:linear-gradient(135deg,#1e293b 0%,#0f172a 100%);border-bottom:1px solid var(--border);padding:1.5rem 2rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem}
+.header h1{font-size:1.5rem;font-weight:700;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.header .subtitle{color:var(--muted);font-size:.85rem;margin-top:.25rem}
+.tabs{display:flex;gap:.5rem}
+.tab{padding:.5rem 1rem;border-radius:.5rem;cursor:pointer;background:var(--card);border:1px solid var(--border);color:var(--muted);font-size:.85rem;transition:all .2s}
+.tab:hover{color:var(--text);border-color:var(--accent)}
+.tab.active{background:var(--accent);color:#0f172a;border-color:var(--accent);font-weight:600}
+.container{max-width:1400px;margin:0 auto;padding:1.5rem}
+.hidden{display:none!important}
+.grid{display:grid;gap:1rem}
+.grid-2{grid-template-columns:1fr 1fr}
+.grid-3{grid-template-columns:1fr 1fr 1fr}
+.grid-4{grid-template-columns:1fr 1fr 1fr 1fr}
+@media(max-width:900px){.grid-2,.grid-3,.grid-4{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--border);border-radius:.75rem;padding:1.25rem;transition:border-color .2s}
+.card:hover{border-color:var(--accent)}
+.card h2{font-size:1rem;font-weight:600;margin-bottom:.75rem;color:var(--accent);display:flex;align-items:center;gap:.5rem}
+.card h3{font-size:.85rem;font-weight:600;margin-bottom:.5rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.stat-card{text-align:center;padding:1rem}
+.stat-card .value{font-size:2rem;font-weight:700;line-height:1.1}
+.stat-card .label{font-size:.75rem;color:var(--muted);margin-top:.25rem;text-transform:uppercase;letter-spacing:.05em}
+.blue .value{color:var(--accent)}
+.purple .value{color:var(--accent2)}
+.green .value{color:var(--green)}
+.red .value{color:var(--red)}
+.yellow .value{color:var(--yellow)}
+.orange .value{color:var(--orange)}
+.pink .value{color:var(--pink)}
+table{width:100%;border-collapse:collapse;font-size:.85rem}
+th{background:var(--card2);color:var(--accent);text-transform:uppercase;font-size:.7rem;letter-spacing:.05em;padding:.6rem .5rem;text-align:left;position:sticky;top:0}
+td{padding:.5rem;border-bottom:1px solid var(--border)}
+tr:hover td{background:rgba(56,189,248,.05)}
+.table-wrap{max-height:400px;overflow-y:auto;border-radius:.5rem;border:1px solid var(--border)}
+.bar-chart{display:flex;flex-direction:column;gap:.5rem}
+.bar-row{display:flex;align-items:center;gap:.5rem}
+.bar-label{min-width:120px;font-size:.8rem;text-align:right;color:var(--muted)}
+.bar-track{flex:1;background:var(--card2);border-radius:.25rem;height:1.5rem;position:relative;overflow:hidden}
+.bar-fill{height:100%;border-radius:.25rem;transition:width .6s ease;display:flex;align-items:center;padding-left:.5rem;font-size:.7rem;color:var(--bg);font-weight:600;min-width:fit-content}
+.bar-value{font-size:.8rem;color:var(--text);min-width:60px}
+.donut-container{display:flex;align-items:center;justify-content:center;gap:1.5rem;flex-wrap:wrap}
+.donut-svg{flex-shrink:0}
+.legend{display:flex;flex-direction:column;gap:.4rem}
+.legend-item{display:flex;align-items:center;gap:.5rem;font-size:.8rem}
+.legend-dot{width:12px;height:12px;border-radius:2px;flex-shrink:0}
+.legend-pct{color:var(--muted);font-size:.75rem;margin-left:.25rem}
+.cross-table{width:100%;border-collapse:collapse;font-size:.75rem}
+.cross-table th,.cross-table td{padding:.4rem;text-align:center;border:1px solid var(--border)}
+.cross-table th{background:var(--card2);color:var(--accent);font-size:.65rem}
+.cross-table td{color:var(--text)}
+.cross-table td.highlight{color:var(--yellow);font-weight:700}
+.loading{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4rem;color:var(--muted);gap:1rem}
+.spinner{width:2rem;height:2rem;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.pct-bar{display:flex;height:1.2rem;border-radius:.25rem;overflow:hidden;font-size:.6rem}
+.pct-bar div{display:flex;align-items:center;justify-content:center;color:var(--bg);font-weight:600;white-space:nowrap;padding:0 .25rem}
+.search-box{padding:.5rem .75rem;background:var(--card2);border:1px solid var(--border);border-radius:.5rem;color:var(--text);font-size:.85rem;width:100%;max-width:300px}
+.search-box:focus{outline:none;border-color:var(--accent)}
+.footer{text-align:center;padding:2rem;color:var(--muted);font-size:.75rem;border-top:1px solid var(--border);margin-top:2rem}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>MGS Dataset - Dashboard</h1>
+    <div class="subtitle">Estatística Descritiva | Multigender &amp; Stereotype Bias</div>
+  </div>
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('overview')">Visão Geral</div>
+    <div class="tab" onclick="switchTab('distributions')">Distribuições</div>
+    <div class="tab" onclick="switchTab('cross')">Análise Cruzada</div>
+    <div class="tab" onclick="switchTab('data')">Dados</div>
+  </div>
+</div>
+
+<div id="loading" class="loading">
+  <div class="spinner"></div>
+  Carregando dados...
+</div>
+
+<div id="content" class="container hidden">
+
+  <section id="tab-overview">
+    <div class="grid grid-4" id="overview-stats"></div>
+    <div class="grid grid-2" style="margin-top:1rem">
+      <div class="card">
+        <h2>&#9632; Resumo por Conjunto (Train vs Test)</h2>
+        <div id="split-summary"></div>
+      </div>
+      <div class="card">
+        <h2>&#9632; Distribuição de Labels</h2>
+        <div id="label-donut"></div>
+      </div>
+    </div>
+    <div class="grid grid-2" style="margin-top:1rem">
+      <div class="card">
+        <h2>&#9632; Distribuição por Stereoype Type</h2>
+        <div id="stereotype-bar"></div>
+      </div>
+      <div class="card">
+        <h2>&#9632; Distribuição por Dataset Original</h2>
+        <div id="dataset-bar"></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:1rem">
+      <h2>&#9632; Distribuição por Multi-Class</h2>
+      <div id="multiclass-bar"></div>
+    </div>
+  </section>
+
+  <section id="tab-distributions" class="hidden">
+    <div class="grid grid-2">
+      <div class="card">
+        <h2>&#9632; Label por Conjunto</h2>
+        <div id="label-by-split"></div>
+      </div>
+      <div class="card">
+        <h2>&#9632; Stereotype Type por Conjunto</h2>
+        <div id="stereotype-by-split"></div>
+      </div>
+    </div>
+    <div class="grid grid-2" style="margin-top:1rem">
+      <div class="card">
+        <h2>&#9632; Binary Class por Conjunto</h2>
+        <div id="binary-by-split"></div>
+      </div>
+      <div class="card">
+        <h2>&#9632; Multi Class por Conjunto</h2>
+        <div id="multiclass-by-split"></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:1rem">
+      <h2>&#9632; Comprimento do Texto (text_no_marker)</h2>
+      <div id="text-length-stats"></div>
+    </div>
+  </section>
+
+  <section id="tab-cross" class="hidden">
+    <div class="card">
+      <h2>&#9632; Label × Stereotype Type</h2>
+      <div class="table-wrap" id="cross-label-stereo"></div>
+    </div>
+    <div class="card" style="margin-top:1rem">
+      <h2>&#9632; Label × Binary Class</h2>
+      <div class="table-wrap" id="cross-label-binary"></div>
+    </div>
+    <div class="card" style="margin-top:1rem">
+      <h2>&#9632; Stereotype Type × Original Dataset</h2>
+      <div class="table-wrap" id="cross-stereo-dataset"></div>
+    </div>
+  </section>
+
+  <section id="tab-data" class="hidden">
+    <div class="card">
+      <h2>&#9632; Amostra dos Dados</h2>
+      <div style="display:flex;gap:.5rem;margin-bottom:.75rem;flex-wrap:wrap;align-items:center">
+        <input type="text" class="search-box" id="search-input" placeholder="Buscar no texto..." oninput="renderDataTable()">
+        <select id="split-filter" style="padding:.45rem;background:var(--card2);border:1px solid var(--border);border-radius:.5rem;color:var(--text);font-size:.85rem" onchange="renderDataTable()">
+          <option value="all">Todos</option>
+          <option value="train">Train</option>
+          <option value="test">Test</option>
+        </select>
+        <select id="label-filter" style="padding:.45rem;background:var(--card2);border:1px solid var(--border);border-radius:.5rem;color:var(--text);font-size:.85rem" onchange="renderDataTable()">
+          <option value="all">Todos Labels</option>
+        </select>
+        <span id="row-count" style="color:var(--muted);font-size:.8rem"></span>
+      </div>
+      <div class="table-wrap" id="data-table-wrap"></div>
+    </div>
+  </section>
+
+</div>
+
+<div class="footer">MGS Dataset Dashboard | PVA766-2026 | Gerado automaticamente</div>
+
+<script>
+const COLORS = ['#38bdf8','#818cf8','#4ade80','#f87171','#fbbf24','#fb923c','#f472b6','#a78bfa','#34d399','#f97316','#e879f9','#22d3ee'];
+let allData = [];
+
+function parseCSV(text) {
+  const lines = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '"') { inQuotes = !inQuotes; current += ch; }
+    else if (ch === ',' && !inQuotes) { lines.push(current.trim()); current = ''; }
+    else if ((ch === '\n' || ch === '\r') && !inQuotes) {
+      if (current.trim() || lines.length > 0) lines.push(current.trim());
+      current = '';
+      if (ch === '\r' && text[i+1] === '\n') i++;
+      const row = [...lines];
+      lines.length = 0;
+      if (row.some(c => c.length > 0)) return_or_continue = true;
+      current = '';
+    }
+    else { current += ch; }
+  }
+  return null;
+}
+
+function parseCSVLine(text) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i <= text.length; i++) {
+    const ch = i < text.length ? text[i] : '\n';
+    if (ch === '"') { inQuotes = !inQuotes; }
+    else if (ch === ',' && !inQuotes) { result.push(current.trim()); current = ''; }
+    else if ((ch === '\n' || ch === '\r') && !inQuotes) {
+      result.push(current.trim());
+      return result;
+    } else { current += ch; }
+  }
+  result.push(current.trim());
+  return result;
+}
+
+function parseFullCSV(text) {
+  const lines = text.split('\n');
+  const headers = parseCSVLine(lines[0]);
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const vals = parseCSVLine(line);
+    if (vals.length >= headers.length) {
+      const row = {};
+      headers.forEach((h, j) => row[h] = vals[j] || '');
+      rows.push(row);
+    }
+  }
+  return { headers, rows };
+}
+
+function countBy(arr, key) {
+  const counts = {};
+  arr.forEach(r => {
+    const v = r[key] || '(vazio)';
+    counts[v] = (counts[v] || 0) + 1;
+  });
+  return counts;
+}
+
+function pct(val, total) { return total > 0 ? (val / total * 100).toFixed(1) : '0.0'; }
+
+function barChart(containerId, counts, color, sortDesc) {
+  let entries = Object.entries(counts);
+  if (sortDesc) entries.sort((a, b) => b[1] - a[1]);
+  const max = Math.max(...entries.map(e => e[1]), 1);
+  const total = entries.reduce((s, e) => s + e[1], 0);
+  let html = '<div class="bar-chart">';
+  entries.forEach(([label, val], i) => {
+    const c = Array.isArray(color) ? color[i % color.length] : color;
+    const w = (val / max * 100).toFixed(1);
+    html += `<div class="bar-row">
+      <div class="bar-label" title="${label}">${label.length > 18 ? label.slice(0,18)+'...' : label}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${w}%;background:${c}">${val}</div></div>
+      <div class="bar-value">${pct(val, total)}%</div>
+    </div>`;
+  });
+  html += '</div>';
+  document.getElementById(containerId).innerHTML = html;
+}
+
+function donutChart(containerId, counts, size) {
+  size = size || 180;
+  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  const total = entries.reduce((s, e) => s + e[1], 0);
+  const cx = size / 2, cy = size / 2, r = size / 2 - 10;
+  const inner = r * 0.55;
+  let paths = '';
+  let angle = -90;
+  entries.forEach(([label, val], i) => {
+    const pctAngle = val / total * 360;
+    const startA = angle;
+    const endA = angle + pctAngle;
+    const large = pctAngle > 180 ? 1 : 0;
+    const x1 = cx + r * Math.cos(startA * Math.PI / 180);
+    const y1 = cy + r * Math.sin(startA * Math.PI / 180);
+    const x2 = cx + r * Math.cos(endA * Math.PI / 180);
+    const y2 = cy + r * Math.sin(endA * Math.PI / 180);
+    const ix1 = cx + inner * Math.cos(endA * Math.PI / 180);
+    const iy1 = cy + inner * Math.sin(endA * Math.PI / 180);
+    const ix2 = cx + inner * Math.cos(startA * Math.PI / 180);
+    const iy2 = cy + inner * Math.sin(startA * Math.PI / 180);
+    paths += `<path d="M${x1},${y1} A${r},${r} 0 ${large} 1 ${x2},${y2} L${ix1},${iy1} A${inner},${inner} 0 ${large} 0 ${ix2},${iy2} Z" fill="${COLORS[i % COLORS.length]}"/>`;
+    angle = endA;
+  });
+  const svg = `<svg class="donut-svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${paths}<text x="${cx}" y="${cy - 6}" text-anchor="middle" fill="#e2e8f0" font-size="1.5em" font-weight="700">${total}</text><text x="${cx}" y="${cy + 14}" text-anchor="middle" fill="#94a3b8" font-size="0.7em">total</text></svg>`;
+  let legend = '<div class="legend">';
+  entries.forEach(([label, val], i) => {
+    legend += `<div class="legend-item"><div class="legend-dot" style="background:${COLORS[i % COLORS.length]}"></div>${label} <span class="legend-pct">${val} (${pct(val, total)}%)</span></div>`;
+  });
+  legend += '</div>';
+  document.getElementById(containerId).innerHTML = `<div class="donut-container">${svg}${legend}</div>`;
+}
+
+function crossTable(containerId, rowKey, colKey, data) {
+  const rowVals = [...new Set(data.map(r => r[rowKey] || '(vazio)'))].sort();
+  const colVals = [...new Set(data.map(r => r[colKey] || '(vazio)'))].sort();
+  const matrix = {};
+  data.forEach(r => {
+    const rv = r[rowKey] || '(vazio)';
+    const cv = r[colKey] || '(vazio)';
+    if (!matrix[rv]) matrix[rv] = {};
+    matrix[rv][cv] = (matrix[rv][cv] || 0) + 1;
+  });
+  let html = '<table class="cross-table"><thead><tr><th></th>';
+  colVals.forEach(c => html += `<th>${c}</th>`);
+  html += '<th>Total</th></tr></thead><tbody>';
+  rowVals.forEach(rv => {
+    let rowTotal = 0;
+    html += `<tr><th>${rv}</th>`;
+    colVals.forEach(cv => {
+      const v = (matrix[rv] && matrix[rv][cv]) || 0;
+      rowTotal += v;
+      html += `<td${v > 0 ? '' : ' style="color:#475569"'}>${v}</td>`;
+    });
+    html += `<td style="font-weight:700">${rowTotal}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  document.getElementById(containerId).innerHTML = html;
+}
+
+function textLengthStats(data) {
+  const lens = data.map(r => (r.text_no_marker || '').length).filter(l => l > 0);
+  lens.sort((a, b) => a - b);
+  if (lens.length === 0) return {};
+  const sum = lens.reduce((a, b) => a + b, 0);
+  const mean = sum / lens.length;
+  const median = lens.length % 2 === 0 ? (lens[lens.length/2 - 1] + lens[lens.length/2]) / 2 : lens[Math.floor(lens.length/2)];
+  const variance = lens.reduce((s, l) => s + (l - mean) ** 2, 0) / lens.length;
+  const std = Math.sqrt(variance);
+  const p25 = lens[Math.floor(lens.length * 0.25)];
+  const p75 = lens[Math.floor(lens.length * 0.75)];
+  const q1 = lens[Math.floor(lens.length * 0.25)];
+  const q3 = lens[Math.floor(lens.length * 0.75)];
+  return { count: lens.length, min: lens[0], max: lens[lens.length-1], mean: mean.toFixed(1), median, std: std.toFixed(1), q1, q3, p25, p75, sum };
+}
+
+function groupTextLengthStats(data, groupKey) {
+  const groups = {};
+  data.forEach(r => {
+    const g = r[groupKey] || '(vazio)';
+    if (!groups[g]) groups[g] = [];
+    groups[g].push((r.text_no_marker || '').length);
+  });
+  const results = [];
+  Object.entries(groups).sort((a,b) => a[0].localeCompare(b[0])).forEach(([g, lens]) => {
+    lens.sort((a,b) => a - b);
+    if (lens.length === 0) return;
+    const sum = lens.reduce((a,b) => a+b, 0);
+    const mean = sum / lens.length;
+    results.push({ group: g, count: lens.length, mean: mean.toFixed(1), median: lens.length % 2 === 0 ? ((lens[lens.length/2-1]+lens[lens.length/2])/2).toFixed(1) : lens[Math.floor(lens.length/2)], min: lens[0], max: lens[lens.length-1], std: Math.sqrt(lens.reduce((s,l)=>s+(l-mean)**2,0)/lens.length).toFixed(1) });
+  });
+  return results;
+}
+
+function renderTextLengthSection(containerId, allData) {
+  const train = allData.filter(r => r._split === 'train');
+  const test = allData.filter(r => r._split === 'test');
+  const statsAll = textLengthStats(allData);
+  const statsTrain = textLengthStats(train);
+  const statsTest = textLengthStats(test);
+  const byLabel = groupTextLengthStats(allData, 'label');
+
+  let html = `<div class="grid grid-3">
+    <div class="card stat-card blue"><div class="value">${statsAll.mean}</div><div class="label">Média Geral</div></div>
+    <div class="card stat-card purple"><div class="value">${statsAll.median}</div><div class="label">Mediana Geral</div></div>
+    <div class="card stat-card green"><div class="value">${statsAll.std}</div><div class="label">Desvio Padrão</div></div>
+  </div>`;
+  html += `<h3 style="margin-top:1rem;margin-bottom:.5rem;color:var(--muted);font-size:.8rem">Estatísticas por Conjunto</h3>`;
+  html += `<table class="cross-table"><thead><tr><th>Conjunto</th><th>N</th><th>Média</th><th>Mediana</th><th>Min</th><th>Max</th><th>DP</th></tr></thead><tbody>`;
+  html += `<tr><th>Treino</th><td>${statsTrain.count}</td><td>${statsTrain.mean}</td><td>${statsTrain.median}</td><td>${statsTrain.min}</td><td>${statsTrain.max}</td><td>${statsTrain.std}</td></tr>`;
+  html += `<tr><th>Teste</th><td>${statsTest.count}</td><td>${statsTest.mean}</td><td>${statsTest.median}</td><td>${statsTest.min}</td><td>${statsTest.max}</td><td>${statsTest.std}</td></tr>`;
+  html += `<tr><th>Total</th><td>${statsAll.count}</td><td>${statsAll.mean}</td><td>${statsAll.median}</td><td>${statsAll.min}</td><td>${statsAll.max}</td><td>${statsAll.std}</td></tr>`;
+  html += `</tbody></table>`;
+
+  html += `<h3 style="margin-top:1rem;margin-bottom:.5rem;color:var(--muted);font-size:.8rem">Comprimento por Label</h3>`;
+  html += `<table class="cross-table"><thead><tr><th>Label</th><th>N</th><th>Média</th><th>Mediana</th><th>Min</th><th>Max</th><th>DP</th></tr></thead><tbody>`;
+  byLabel.forEach(r => {
+    html += `<tr><th>${r.group}</th><td>${r.count}</td><td>${r.mean}</td><td>${r.median}</td><td>${r.min}</td><td>${r.max}</td><td>${r.std}</td></tr>`;
+  });
+  html += `</tbody></table>`;
+  document.getElementById(containerId).innerHTML = html;
+}
+
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  event.target.classList.add('active');
+  ['overview','distributions','cross','data'].forEach(t => {
+    document.getElementById('tab-'+t).classList.toggle('hidden', t !== tab);
+  });
+}
+
+function renderDataTable() {
+  const search = document.getElementById('search-input').value.toLowerCase();
+  const splitFilter = document.getElementById('split-filter').value;
+  const labelFilter = document.getElementById('label-filter').value;
+  let filtered = allData;
+  if (splitFilter !== 'all') filtered = filtered.filter(r => r._split === splitFilter);
+  if (labelFilter !== 'all') filtered = filtered.filter(r => (r.label||'(vazio)') === labelFilter);
+  if (search) filtered = filtered.filter(r => (r.text_no_marker||'').toLowerCase().includes(search) || (r.text_with_marker||'').toLowerCase().includes(search));
+  const maxRows = 200;
+  const showing = filtered.slice(0, maxRows);
+  document.getElementById('row-count').textContent = `Mostrando ${Math.min(showing.length, maxRows)} de ${filtered.length} registros`;
+  let html = '<table><thead><tr><th>#</th><th>text_no_marker</th><th>label</th><th>stereotype_type</th><th>binary_class</th><th>multi_class</th><th>dataset</th><th>split</th></tr></thead><tbody>';
+  showing.forEach((r, i) => {
+    const txt = (r.text_no_marker || '').length > 80 ? r.text_no_marker.slice(0, 80) + '...' : r.text_no_marker;
+    html += `<tr><td>${i+1}</td><td title="${r.text_no_marker?.replace(/"/g,'&quot;')}">${txt.replace(/</g,'&lt;')}</td><td>${r.label}</td><td>${r.stereotype_type}</td><td>${r.binary_class}</td><td>${r.multi_class}</td><td>${r.original_dataset}</td><td>${r._split}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  document.getElementById('data-table-wrap').innerHTML = html;
+}
+
+function populateLabelFilter() {
+  const labels = [...new Set(allData.map(r => r.label || '(vazio)'))].sort();
+  const sel = document.getElementById('label-filter');
+  labels.forEach(l => { const o = document.createElement('option'); o.value = l; o.textContent = l; sel.appendChild(o); });
+}
+
+async function init() {
+  try {
+    const [trainResp, testResp] = await Promise.all([
+      fetch('dataset/train-MGS.csv'),
+      fetch('dataset/test-MGS.csv')
+    ]);
+    const trainText = await trainResp.text();
+    const testText = await testResp.text();
+    const trainParsed = parseFullCSV(trainText);
+    const testParsed = parseFullCSV(testText);
+    const trainData = trainParsed.rows.map(r => ({...r, _split: 'train'}));
+    const testData = testParsed.rows.map(r => ({...r, _split: 'test'}));
+    allData = [...trainData, ...testData];
+
+    const train = allData.filter(r => r._split === 'train');
+    const test = allData.filter(r => r._split === 'test');
+    const total = allData.length;
+
+    document.getElementById('overview-stats').innerHTML = `
+      <div class="card stat-card blue"><div class="value">${total.toLocaleString()}</div><div class="label">Total de Registros</div></div>
+      <div class="card stat-card purple"><div class="value">${train.length.toLocaleString()}</div><div class="label">Treino</div></div>
+      <div class="card stat-card green"><div class="value">${test.length.toLocaleString()}</div><div class="label">Teste</div></div>
+      <div class="card stat-card orange"><div class="value">${[...new Set(allData.map(r => r.multi_class))].length}</div><div class="label">Classes Únicas</div></div>
+    `;
+
+    const splitCounts = { 'Treino': train.length, 'Teste': test.length };
+    barChart('split-summary', splitCounts, COLORS);
+
+    const labelCounts = countBy(allData, 'label');
+    donutChart('label-donut', labelCounts);
+    barChart('stereotype-bar', countBy(allData, 'stereotype_type'), COLORS, true);
+    barChart('dataset-bar', countBy(allData, 'original_dataset'), COLORS, true);
+    barChart('multiclass-bar', countBy(allData, 'multi_class'), COLORS, true);
+
+    barChart('label-by-split', countBy(train, 'label'), COLORS);
+    const labelBySplit = {};
+    ['train','test'].forEach(s => {
+      const d = allData.filter(r => r._split === s);
+      Object.entries(countBy(d, 'label')).forEach(([k,v]) => {
+        if (!labelBySplit[k]) labelBySplit[k] = {};
+        labelBySplit[k][s] = v;
+      });
+    });
+    let lbsHtml = '<table class="cross-table"><thead><tr><th>Label</th><th>Treino</th><th>Teste</th><th>Total</th></tr></thead><tbody>';
+    Object.entries(labelBySplit).sort((a,b) => (b[1].train||0)+(b[1].test||0) - (a[1].train||0)+(a[1].test||0)).forEach(([label, sp]) => {
+      const t = (sp.train||0), e = (sp.test||0);
+      lbsHtml += `<tr><th>${label}</th><td>${t}</td><td>${e}</td><td>${t+e}</td></tr>`;
+    });
+    lbsHtml += '</tbody></table>';
+    document.getElementById('label-by-split').innerHTML = lbsHtml;
+
+    const stBySplit = {};
+    ['train','test'].forEach(s => {
+      const d = allData.filter(r => r._split === s);
+      Object.entries(countBy(d, 'stereotype_type')).forEach(([k,v]) => {
+        if (!stBySplit[k]) stBySplit[k] = {};
+        stBySplit[k][s] = v;
+      });
+    });
+    let stHtml = '<table class="cross-table"><thead><tr><th>Stereotype Type</th><th>Treino</th><th>Teste</th><th>Total</th></tr></thead><tbody>';
+    Object.entries(stBySplit).sort((a,b) => (b[1].train||0)+(b[1].test||0) - (a[1].train||0)+(a[1].test||0)).forEach(([label, sp]) => {
+      const t = (sp.train||0), e = (sp.test||0);
+      stHtml += `<tr><th>${label}</th><td>${t}</td><td>${e}</td><td>${t+e}</td></tr>`;
+    });
+    stHtml += '</tbody></table>';
+    document.getElementById('stereotype-by-split').innerHTML = stHtml;
+
+    const binBySplit = {};
+    ['train','test'].forEach(s => {
+      const d = allData.filter(r => r._split === s);
+      Object.entries(countBy(d, 'binary_class')).forEach(([k,v]) => {
+        if (!binBySplit[k]) binBySplit[k] = {};
+        binBySplit[k][s] = v;
+      });
+    });
+    let binHtml = '<table class="cross-table"><thead><tr><th>Binary Class</th><th>Treino</th><th>Teste</th><th>Total</th></tr></thead><tbody>';
+    Object.entries(binBySplit).sort((a,b) => (b[1].train||0)+(b[1].test||0) - (a[1].train||0)+(a[1].test||0)).forEach(([label, sp]) => {
+      const t = (sp.train||0), e = (sp.test||0);
+      binHtml += `<tr><th>${label}</th><td>${t}</td><td>${e}</td><td>${t+e}</td></tr>`;
+    });
+    binHtml += '</tbody></table>';
+    document.getElementById('binary-by-split').innerHTML = binHtml;
+
+    const mcBySplit = {};
+    ['train','test'].forEach(s => {
+      const d = allData.filter(r => r._split === s);
+      Object.entries(countBy(d, 'multi_class')).forEach(([k,v]) => {
+        if (!mcBySplit[k]) mcBySplit[k] = {};
+        mcBySplit[k][s] = v;
+      });
+    });
+    let mcHtml = '<table class="cross-table"><thead><tr><th>Multi Class</th><th>Treino</th><th>Teste</th><th>Total</th></tr></thead><tbody>';
+    Object.entries(mcBySplit).sort((a,b) => (b[1].train||0)+(b[1].test||0) - (a[1].train||0)+(a[1].test||0)).forEach(([label, sp]) => {
+      const t = (sp.train||0), e = (sp.test||0);
+      mcHtml += `<tr><th>${label}</th><td>${t}</td><td>${e}</td><td>${t+e}</td></tr>`;
+    });
+    mcHtml += '</tbody></table>';
+    document.getElementById('multiclass-by-split').innerHTML = mcHtml;
+
+    renderTextLengthSection('text-length-stats', allData);
+    crossTable('cross-label-stereo', 'label', 'stereotype_type', allData);
+    crossTable('cross-label-binary', 'label', 'binary_class', allData);
+    crossTable('cross-stereo-dataset', 'stereotype_type', 'original_dataset', allData);
+
+    populateLabelFilter();
+    renderDataTable();
+
+    document.getElementById('loading').classList.add('hidden');
+    document.getElementById('content').classList.remove('hidden');
+  } catch (err) {
+    document.getElementById('loading').innerHTML = `<p style="color:var(--red)">Erro ao carregar dados: ${err.message}</p><p style="color:var(--muted);font-size:.8rem;margin-top:.5rem">Certifique-se de que os arquivos CSV estão no diretório dataset/ e o servidor está rodando.</p>`;
+  }
+}
+
+init();
+</script>
+</body>
+</html>

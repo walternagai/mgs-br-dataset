@@ -1,0 +1,16 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+
+# Processamento
+.checkpoints/
+
+# Datasets completos — muito grandes para o git (baixar separadamente)
+dataset/train-MGS.csv
+dataset/test-MGS.csv
+dataset/*.parquet
+
+# Saídas geradas — reproduzidas executando adapt_dataset.py
+dataset/train-MGS-BR.csv
+dataset/test-MGS-BR.csv

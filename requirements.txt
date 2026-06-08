@@ -2,4 +2,5 @@ anthropic==0.107.1
 openai==2.41.0
 pandas==3.0.3
 python-dotenv==1.2.1
+json-repair==0.54.2
 tqdm==4.68.1

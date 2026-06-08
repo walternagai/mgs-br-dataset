@@ -14,6 +14,8 @@ import json
 import time
 import argparse
 import hashlib
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from collections import defaultdict
 from datetime import datetime
@@ -21,6 +23,7 @@ from datetime import datetime
 import pandas as pd
 from tqdm import tqdm
 from dotenv import load_dotenv
+from json_repair import repair_json
 
 load_dotenv()
 
@@ -53,7 +56,7 @@ PROVIDERS: dict[str, dict] = {
     "maritaca": {
         "sdk":           "openai",
         "base_url":      "https://chat.maritaca.ai/api",
-        "default_model": "sabia-3",
+        "default_model": "sabia-4",
         "env_key":       "MARITACA_API_KEY",
         "requires_key":  True,
     },
@@ -98,7 +101,8 @@ _VALID_LEGAL  = {"crime_racismo", "crime_trabalho", "vies_cultural", "neutro"}
 
 DATASET_DIR        = Path("dataset")
 CHECKPOINT_DIR     = Path(".checkpoints")
-DEFAULT_BATCH_SIZE = 10
+DEFAULT_BATCH_SIZE = 5
+DEFAULT_WORKERS   = 4
 MAX_RETRIES        = 3
 RETRY_DELAY        = 5  # segundos
 
@@ -152,7 +156,14 @@ Combine:
 - manutencao               : mantido sem mudança significativa
 - descarte                 : sem equivalente cultural — marcar confianca < 0.3
 
-Responda EXCLUSIVAMENTE em JSON válido, sem markdown, sem texto fora do JSON."""
+Responda EXCLUSIVAMENTE em JSON válido, sem markdown, sem texto fora do JSON.
+
+## REGRA CRÍTICA — Formato JSON
+- Todas as chaves do JSON DEVEM permanecer em INGLÊS (ex: "stereotype_type_br", NUNCA "tipo_estereotipo_br").
+- Não use acentos, ç, ou caracteres não-ASCII nos nomes das chaves.
+- Não adicione vírgulas extras (vírgula final no último elemento de cada objeto NÃO é permitida).
+- Todas as strings DEVEM usar aspas duplas ("), nunca aspas simples (').
+- Caracteres especiais dentro de strings (aspas, backslashes) DEVEM ser escapados com \\."""
 
 BATCH_PROMPT_TEMPLATE = """Adapte as seguintes {n} linhas do dataset de estereótipos para o contexto brasileiro.
 
@@ -177,6 +188,8 @@ Retorne um JSON array com {n} objetos, um por linha, na mesma ordem:
     "decision_justificativa": "<justificativa em 1-2 frases>"
   }}
 ]
+
+CRÍTICO: O array deve ter EXATAMENTE {n} objetos, nem mais nem menos. Chaves do JSON em INGLÊS. Sem vírgula final no último campo de cada objeto. Strings com aspas duplas, escapadas com \\.
 
 Linhas a adaptar:
 {rows_json}
@@ -261,6 +274,7 @@ class DatasetAdapter:
         self.llm              = llm
         self.decisions: list[dict]        = []
         self.decision_counter: dict[str, int] = defaultdict(int)
+        self._lock            = threading.Lock()
 
     def _row_id(self, row: dict, idx: int) -> str:
         text = row.get("text_no_marker", "")[:50]
@@ -289,6 +303,12 @@ class DatasetAdapter:
                 return json.loads(raw)
             except json.JSONDecodeError as exc:
                 err = f"JSON inválido: {exc}"
+                # tenta reparo automático antes do retry tradicional
+                try:
+                    repaired = repair_json(raw)
+                    return json.loads(repaired)
+                except Exception:
+                    pass
             except Exception as exc:
                 err = f"{type(exc).__name__}: {exc}"
 
@@ -322,19 +342,20 @@ class DatasetAdapter:
             new_row["decision_id"]          = rid
 
             if api:
-                self.decisions.append({
-                    "id":                rid,
-                    "decision_class":    api.get("decision_class", "manutencao"),
-                    "justificativa":     api.get("decision_justificativa", ""),
-                    "grupo_original_en": row.get("stereotype_type", ""),
-                    "stereotype_type_br": api.get("stereotype_type_br", ""),
-                    "legal_status_br":   api.get("legal_status_br", "neutro"),
-                    "lei_referencia_br": api.get("lei_referencia_br", "neutro"),
-                    "confianca":         api.get("confianca_traducao_br", 0.0),
-                    "text_original":     row.get("text_no_marker", "")[:120],
-                    "text_br":           api.get("text_no_marker_br", "")[:120],
-                })
-                self.decision_counter[api.get("decision_class", "manutencao")] += 1
+                with self._lock:
+                    self.decisions.append({
+                        "id":                rid,
+                        "decision_class":    api.get("decision_class", "manutencao"),
+                        "justificativa":     api.get("decision_justificativa", ""),
+                        "grupo_original_en": row.get("stereotype_type", ""),
+                        "stereotype_type_br": api.get("stereotype_type_br", ""),
+                        "legal_status_br":   api.get("legal_status_br", "neutro"),
+                        "lei_referencia_br": api.get("lei_referencia_br", "neutro"),
+                        "confianca":         api.get("confianca_traducao_br", 0.0),
+                        "text_original":     row.get("text_no_marker", "")[:120],
+                        "text_br":           api.get("text_no_marker_br", "")[:120],
+                    })
+                    self.decision_counter[api.get("decision_class", "manutencao")] += 1
 
             merged.append(new_row)
         return merged
@@ -346,6 +367,7 @@ class DatasetAdapter:
         sample:     int | None = None,
         resume:     bool = False,
         batch_size: int  = DEFAULT_BATCH_SIZE,
+        workers:    int  = DEFAULT_WORKERS,
     ):
         CHECKPOINT_DIR.mkdir(exist_ok=True)
         checkpoint_path = CHECKPOINT_DIR / f"{input_path.stem}_checkpoint.jsonl"
@@ -358,17 +380,16 @@ class DatasetAdapter:
         print(f"\n{'='*60}")
         print(f"Processando : {input_path.name}  ({total} linhas)")
         print(f"Provedor    : {self.llm.provider}  |  Modelo: {self.llm.model}")
+        print(f"Workers     : {workers}")
         print(f"{'='*60}")
 
-        processed_ids: set[str]    = set()
-        processed_rows: list[dict] = []
+        processed_ids: set[str] = set()
         if resume and checkpoint_path.exists():
             with open(checkpoint_path, encoding="utf-8") as f:
                 for line in f:
                     rec = json.loads(line)
-                    processed_rows.append(rec)
                     processed_ids.add(rec.get("decision_id", ""))
-            print(f"  Retomando: {len(processed_rows)} linhas já processadas")
+            print(f"  Retomando: {len(processed_ids)} linhas já processadas")
 
         all_rows = df.to_dict("records")
         pending  = []
@@ -378,19 +399,43 @@ class DatasetAdapter:
             if rid not in processed_ids:
                 pending.append(row)
 
-        checkpoint_file = open(checkpoint_path, "a", encoding="utf-8")
-        try:
-            with tqdm(total=len(pending), desc="  Adaptando", unit="linhas") as pbar:
-                for i in range(0, len(pending), batch_size):
-                    batch      = pending[i: i + batch_size]
-                    api_res    = self.adapt_batch(batch)
-                    merged     = self.merge_results(batch, api_res)
+        if not pending:
+            print("  Nada pendente — todas as linhas já processadas.")
+        else:
+            batches = [pending[i:i + batch_size] for i in range(0, len(pending), batch_size)]
+            workers = min(workers, len(batches))
+
+            checkpoint_file = open(checkpoint_path, "a", encoding="utf-8")
+            ckpt_lock        = threading.Lock()
+
+            def _process_batch(batch):
+                api_res = self.adapt_batch(batch)
+                merged  = self.merge_results(batch, api_res)
+                with ckpt_lock:
                     for row in merged:
                         checkpoint_file.write(json.dumps(row, ensure_ascii=False) + "\n")
-                        processed_rows.append(row)
-                    pbar.update(len(batch))
-        finally:
-            checkpoint_file.close()
+                return len(batch)
+
+            try:
+                with ThreadPoolExecutor(max_workers=workers) as executor:
+                    futures = {executor.submit(_process_batch, b): b for b in batches}
+                    with tqdm(total=len(pending), desc="  Adaptando", unit="linhas") as pbar:
+                        for future in as_completed(futures):
+                            batch = futures[future]
+                            try:
+                                n = future.result()
+                            except Exception as exc:
+                                n = len(batch)
+                                print(f"\n  [erro] batch falhou: {type(exc).__name__}: {exc}")
+                            pbar.update(n)
+            finally:
+                checkpoint_file.close()
+
+        processed_rows: list[dict] = []
+        if checkpoint_path.exists():
+            with open(checkpoint_path, encoding="utf-8") as f:
+                for line in f:
+                    processed_rows.append(json.loads(line))
 
         id_to_result = {r.get("decision_id", ""): r for r in processed_rows}
         final_rows   = []
@@ -419,7 +464,7 @@ class DatasetAdapter:
         baixa = sum(1 for r in final_rows if _conf(r) < 0.5)
 
         print(f"\n  Salvo em: {output_path}")
-        print(f"  Confiança — alta(≥0.9): {alta} | mod(0.7-0.89): {mod_a} | baixa(<0.5): {baixa}")
+        print(f"  Confianca — alta(>=0.9): {alta} | mod(0.7-0.89): {mod_a} | baixa(<0.5): {baixa}")
         return final_rows
 
     def save_decision_log(self, output_path: Path):
@@ -595,6 +640,10 @@ Exemplos:
         "--resume", action="store_true",
         help="Retoma processamento interrompido a partir do checkpoint",
     )
+    proc.add_argument(
+        "--workers", type=int, default=DEFAULT_WORKERS, metavar="N",
+        help=f"Requisições paralelas ao LLM (default: {DEFAULT_WORKERS})",
+    )
     return p
 
 
@@ -618,6 +667,7 @@ def main():
         adapter.process_file(
             input_path, output_path,
             sample=args.sample, resume=args.resume, batch_size=args.batch_size,
+            workers=args.workers,
         )
 
     adapter.save_decision_log(decision_log_path)

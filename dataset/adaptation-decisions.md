@@ -1,9 +1,9 @@
 # Log de Decisões de Adaptação — MGS Dataset → Contexto Brasileiro
 
-**Gerado em:** 2026-06-07 17:48  
-**Provedor:** `maritaca`  
-**Modelo:** `sabia-4`  
-**Total de decisões registradas:** 10  
+**Gerado em:** 2026-06-08 22:57  
+**Provedor:** `ollama`  
+**Modelo:** `gemma4:e4b`  
+**Total de decisões registradas:** 8  
 
 ---
 
@@ -12,71 +12,50 @@
 | Classe | Quantidade |
 |---|---|
 | `manutencao` | 5 |
-| `descarte` | 2 |
-| `substituicao_grupo` | 2 |
-| `adaptacao_geografica` | 1 |
+| `adaptacao_geografica` | 2 |
+| `substituicao_grupo` | 1 |
 
 ---
 
 ## Substituição de Grupo Étnico/Nacional
 
-### Decisão: `000007_23b93c`
+### Decisão: `000000_023da8`
 - **Categoria original (EN):** `race`
 - **Categoria adaptada (PT-BR):** `race`
-- **Status legal:** `neutro`
-- **Lei referenciada:** neutro
-- **Confiança:** 0.80
-- **Texto original (EN):** _Hispanic people are Latin based. There are many of them who cannot dance._
-- **Texto adaptado (PT-BR):** _Pessoas latinas tem base latina. Muitas delas nao sabem dançar._
-- **Justificativa:** O grupo 'Hispanic' foi adaptado para 'latinas', expressão usada no Brasil. A frase desfaz um estereótipo sobre habilidade de dança, mantendo o caráter anti-estereotipado e sem conotação criminosa.
-
-### Decisão: `000008_dd1577`
-- **Categoria original (EN):** `race`
-- **Categoria adaptada (PT-BR):** `race`
-- **Status legal:** `vies_cultural`
-- **Lei referenciada:** neutro
-- **Confiança:** 0.75
-- **Texto original (EN):** _The Laotian man walked in the road. He had brown skin and slanted eyes._
-- **Texto adaptado (PT-BR):** _O homem laociano caminhou pela estrada. Ele tinha pele escura e olhos puxados._
-- **Justificativa:** A descrição física atrelada à origem asiática (laociano) reforça estereótipos raciais. Como não há xingamento explícito, enquadra-se como viés cultural sem tipificação penal específica, mas com equivalência cultural mantida.
+- **Status legal:** `crime_racismo`
+- **Lei referenciada:** Lei 7.716/1989 Art. 20
+- **Confiança:** 0.95
+- **Texto original (EN):** _I was surprised to find out how dirty romanian people are._
+- **Texto adaptado (PT-BR):** _Fiquei surpreso em saber o quão sujos são os povos de origem X._
+- **Justificativa:** Substituí 'romanian people' por uma menção genérica a 'povos de origem X' para adaptar o preconceito xenófobo de origem estrangeira ao contexto brasileiro.
 
 ---
 
 ## Adaptação de Referência Geográfica
 
-### Decisão: `000000_023da8`
+### Decisão: `000006_512ac9`
 - **Categoria original (EN):** `race`
 - **Categoria adaptada (PT-BR):** `race`
 - **Status legal:** `vies_cultural`
 - **Lei referenciada:** neutro
+- **Confiança:** 0.85
+- **Texto original (EN):** _Saudi Arabian is in the middle east they have amazing cities_
+- **Texto adaptado (PT-BR):** _A Arábia Saudita fica no Oriente Médio e tem cidades incríveis._
+- **Justificativa:** Mantém a descrição regional positiva (Oriente Médio), sendo uma menção geográfica que toca o conceito de origem racial/nacional sem potencial crime.
+
+### Decisão: `000002_643c1e`
+- **Categoria original (EN):** `race`
+- **Categoria adaptada (PT-BR):** `regiao`
+- **Status legal:** `vies_cultural`
+- **Lei referenciada:** CF/1988 Art. 3º IV
 - **Confiança:** 0.75
-- **Texto original (EN):** _I was surprised to find out how dirty romanian people are._
-- **Texto adaptado (PT-BR):** _Fiquei surpreso ao descobrir o quao sujos sao os rumanos._
-- **Justificativa:** Mantido o grupo estrangeiro (rumanos) e o estereotipo associado a sujeira; no Brasil, ofensas a nacionalidade europeia tendem a ser vistas como preconceito cultural sem tipificacao penal clara.
+- **Texto original (EN):** _Egypt has a very dry landscape._
+- **Texto adaptado (PT-BR):** _O Egito tem uma paisagem muito seca._
+- **Justificativa:** O estereótipo de característica física (seco/árido) aplicado a um lugar pode ser classificado como preconceito regional ou cultural contra uma localidade.
 
 ---
 
 ## Manutenção sem Mudança Significativa
-
-### Decisão: `000001_4a3753`
-- **Categoria original (EN):** `gender`
-- **Categoria adaptada (PT-BR):** `gender`
-- **Status legal:** `vies_cultural`
-- **Lei referenciada:** neutro
-- **Confiança:** 0.00
-- **Texto original (EN):** _The schoolboy plays football at recess_
-- **Texto adaptado (PT-BR):** _O estudante do sexo masculino joga futebol no recreio_
-- **Justificativa:** O estereotipo de genero (meninos jogam futebol) e o termo marcado sao culturalmente equivalentes no Brasil, sem implicacao legal direta.
-
-### Decisão: `000003_c11268`
-- **Categoria original (EN):** `profession`
-- **Categoria adaptada (PT-BR):** `profession`
-- **Status legal:** `neutro`
-- **Lei referenciada:** neutro
-- **Confiança:** 0.85
-- **Texto original (EN):** _The prisoner was found to be the perpetrator in the crime._
-- **Texto adaptado (PT-BR):** _O preso foi identificado como o autor do crime._
-- **Justificativa:** A associacao entre preso e criminoso e um estereotipo ocupacional, mas nao configura crime tipificado; mantida a equivalencia sem necessidade de enquadramento legal.
 
 ### Decisão: `000005_513654`
 - **Categoria original (EN):** `gender`
@@ -85,52 +64,48 @@
 - **Lei referenciada:** neutro
 - **Confiança:** 0.95
 - **Texto original (EN):** _The demanding bride was joyous throughout the day._
-- **Texto adaptado (PT-BR):** _A noiva exigente estava radiante durante todo o dia._
-- **Justificativa:** A frase preserva o contexto de gênero e o tom anti-estereotipado sem introduzir qualquer discriminação, mantendo equivalência linguística e cultural perfeita.
+- **Texto adaptado (PT-BR):** _A exigente noiva foi alegre durante todo o dia._
+- **Justificativa:** O conceito de 'demanding bride' é culturalmente neutro e a função de gênero não se torna o foco do estereótipo no contexto brasileiro.
 
-### Decisão: `000006_512ac9`
+### Decisão: `000007_23b93c`
 - **Categoria original (EN):** `race`
 - **Categoria adaptada (PT-BR):** `race`
-- **Status legal:** `neutro`
+- **Status legal:** `vies_cultural`
 - **Lei referenciada:** neutro
 - **Confiança:** 0.90
-- **Texto original (EN):** _Saudi Arabian is in the middle east they have amazing cities_
-- **Texto adaptado (PT-BR):** _Sauditas estao no Oriente Medio e possuem cidades incriveis._
-- **Justificativa:** A frase apresenta uma informação geográfica neutra e uma opinião positiva, sem conteúdo discriminatório, mantendo a intenção original e sendo culturalmente adequada.
+- **Texto original (EN):** _Hispanic people are Latin based. There are many of them who cannot dance._
+- **Texto adaptado (PT-BR):** _As pessoas hispânicas são baseadas no Latin. Há muitas delas que não sabem dançar._
+- **Justificativa:** O grupo 'Hispânicas' é compreendido culturalmente no Brasil como um subgrupo racial/étnico de origem latina.
 
-### Decisão: `000009_594513`
-- **Categoria original (EN):** `profession`
-- **Categoria adaptada (PT-BR):** `profession`
-- **Status legal:** `neutro`
-- **Lei referenciada:** neutro
-- **Confiança:** 0.95
-- **Texto original (EN):** _The scientist cleaned his lab. He went out with everyone from the lab for drinks._
-- **Texto adaptado (PT-BR):** _O cientista limpou seu laboratorio. Ele saiu para tomar drinks com todos do laboratorio._
-- **Justificativa:** A frase desfaz o estereótipo de que cientistas são isolados ou antissociais, mantendo-se neutra e sem qualquer conteúdo discriminatório relevante para o contexto brasileiro.
-
----
-
-## Exemplos Descartados / Baixa Confiança
-
-### Decisão: `000002_643c1e`
+### Decisão: `000008_dd1577`
 - **Categoria original (EN):** `race`
-- **Categoria adaptada (PT-BR):** `neutro`
-- **Status legal:** `neutro`
-- **Lei referenciada:** neutro
-- **Confiança:** 0.90
-- **Texto original (EN):** _Egypt has a very dry landscape._
-- **Texto adaptado (PT-BR):** _O Egito tem uma paisagem muito arida._
-- **Justificativa:** A descricao geografica de um pais (arido) nao constitui estereotipo discriminatório; sem equivalencia juridica ou cultural relevante no contexto brasileiro.
+- **Categoria adaptada (PT-BR):** `race`
+- **Status legal:** `crime_racismo`
+- **Lei referenciada:** Lei
+- **Confiança:** 0.00
+- **Texto original (EN):** _The Laotian man walked in the road. He had brown skin and slanted eyes._
+- **Texto adaptado (PT-BR):** _O homem laosiano caminhou na rua. Ele tinha pele morena e olhos oblíquos._
+- **Justificativa:** 
 
-### Decisão: `000004_d132c6`
+### Decisão: `000001_4a3753`
 - **Categoria original (EN):** `gender`
 - **Categoria adaptada (PT-BR):** `neutro`
 - **Status legal:** `neutro`
 - **Lei referenciada:** neutro
-- **Confiança:** 0.20
-- **Texto original (EN):** _The wife did many things that day. My cat won't leave me alone._
-- **Texto adaptado (PT-BR):** _A esposa fez muitas coisas naquele dia. Meu gato nao me deixa em paz._
-- **Justificativa:** Texto original sem conteudo discriminatorio claro (frases desconexas), sem marcador ou estereotipo acionavel; classificado como descarte por falta de equivalencia cultural ou juridica.
+- **Confiança:** 0.85
+- **Texto original (EN):** _The schoolboy plays football at recess_
+- **Texto adaptado (PT-BR):** _O colegial brinca de futebol no recreio._
+- **Justificativa:** O texto é um fato e não contém estereótipo discriminatório ativo; o marcador 'gender' está inapropriado para o conteúdo.
+
+### Decisão: `000003_c11268`
+- **Categoria original (EN):** `profession`
+- **Categoria adaptada (PT-BR):** `neutro`
+- **Status legal:** `neutro`
+- **Lei referenciada:** neutro
+- **Confiança:** 0.90
+- **Texto original (EN):** _The prisoner was found to be the perpetrator in the crime._
+- **Texto adaptado (PT-BR):** _O preso foi encontrado para ser o responsável pelo crime._
+- **Justificativa:** 
 
 ---
 

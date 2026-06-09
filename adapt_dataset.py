@@ -14,8 +14,10 @@ import json
 import time
 import argparse
 import hashlib
+import signal
+import logging
 import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from collections import defaultdict
 from datetime import datetime
@@ -105,6 +107,40 @@ DEFAULT_BATCH_SIZE = 5
 DEFAULT_WORKERS   = 4
 MAX_RETRIES        = 3
 RETRY_DELAY        = 5  # segundos
+
+# ---------------------------------------------------------------------------
+# Logging e sinais para execução em background
+# ---------------------------------------------------------------------------
+
+LOG_DIR = Path("logs")
+LOG_DIR.mkdir(exist_ok=True)
+_LOG_FMT = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+
+_console_handler = logging.StreamHandler(sys.stdout)
+_console_handler.setLevel(logging.WARNING)
+_console_handler.setFormatter(_LOG_FMT)
+
+_file_handler = logging.FileHandler(
+    LOG_DIR / "adapt_dataset.log", encoding="utf-8"
+)
+_file_handler.setLevel(logging.DEBUG)
+_file_handler.setFormatter(_LOG_FMT)
+
+logger = logging.getLogger("adapt")
+logger.addHandler(_console_handler)
+logger.addHandler(_file_handler)
+logger.setLevel(logging.DEBUG)
+
+_shutdown_requested = threading.Event()
+
+def _handle_signal(signum: int, frame):
+    sig_name = signal.Signals(signum).name
+    logger.warning("Sinal %s recebido — finalizando graciosamente...", sig_name)
+    print(f"\n⚠  [{sig_name}] Finalizando — aguarde as requisições em andamento...")
+    _shutdown_requested.set()
+
+signal.signal(signal.SIGTERM, _handle_signal)
+signal.signal(signal.SIGINT, _handle_signal)
 
 # ---------------------------------------------------------------------------
 # Prompts
@@ -372,6 +408,8 @@ class DatasetAdapter:
         CHECKPOINT_DIR.mkdir(exist_ok=True)
         checkpoint_path = CHECKPOINT_DIR / f"{input_path.stem}_checkpoint.jsonl"
 
+        _shutdown_requested.clear()
+
         df = pd.read_csv(input_path, dtype=str, keep_default_na=False)
         if sample:
             df = df.head(sample)
@@ -382,6 +420,11 @@ class DatasetAdapter:
         print(f"Provedor    : {self.llm.provider}  |  Modelo: {self.llm.model}")
         print(f"Workers     : {workers}")
         print(f"{'='*60}")
+        logger.info(
+            "Iniciando: %s (%d linhas) | provider=%s model=%s workers=%d resume=%s sample=%s",
+            input_path.name, total, self.llm.provider, self.llm.model,
+            workers, resume, sample,
+        )
 
         processed_ids: set[str] = set()
         if resume and checkpoint_path.exists():
@@ -409,6 +452,8 @@ class DatasetAdapter:
             ckpt_lock        = threading.Lock()
 
             def _process_batch(batch):
+                if _shutdown_requested.is_set():
+                    return 0
                 api_res = self.adapt_batch(batch)
                 merged  = self.merge_results(batch, api_res)
                 with ckpt_lock:
@@ -416,20 +461,39 @@ class DatasetAdapter:
                         checkpoint_file.write(json.dumps(row, ensure_ascii=False) + "\n")
                 return len(batch)
 
+            executor = ThreadPoolExecutor(max_workers=workers)
             try:
-                with ThreadPoolExecutor(max_workers=workers) as executor:
-                    futures = {executor.submit(_process_batch, b): b for b in batches}
-                    with tqdm(total=len(pending), desc="  Adaptando", unit="linhas") as pbar:
-                        for future in as_completed(futures):
-                            batch = futures[future]
+                futures = {
+                    executor.submit(_process_batch, b): b
+                    for b in batches
+                    if not _shutdown_requested.is_set()
+                }
+                with tqdm(
+                    total=len(pending), desc="  Adaptando", unit="linhas",
+                    disable=not sys.stdout.isatty(),
+                ) as pbar:
+                    while futures and not _shutdown_requested.is_set():
+                        done = [
+                            f for f in futures if f.done()
+                        ]
+                        for future in done:
+                            batch = futures.pop(future)
                             try:
                                 n = future.result()
                             except Exception as exc:
                                 n = len(batch)
+                                logger.error("Batch falhou: %s: %s", type(exc).__name__, exc)
                                 print(f"\n  [erro] batch falhou: {type(exc).__name__}: {exc}")
                             pbar.update(n)
+                        if not done:
+                            time.sleep(0.5)
+            except KeyboardInterrupt:
+                _shutdown_requested.set()
+                print("\n⚠  Interrompido pelo usuário — salvando checkpoint...")
             finally:
+                executor.shutdown(wait=False, cancel_futures=True)
                 checkpoint_file.close()
+                checkpoint_file = None
 
         processed_rows: list[dict] = []
         if checkpoint_path.exists():
@@ -465,6 +529,10 @@ class DatasetAdapter:
 
         print(f"\n  Salvo em: {output_path}")
         print(f"  Confianca — alta(>=0.9): {alta} | mod(0.7-0.89): {mod_a} | baixa(<0.5): {baixa}")
+        logger.info(
+            "Concluído: %s -> %s | alta=%d mod=%d baixa=%d",
+            input_path.name, output_path.name, alta, mod_a, baixa,
+        )
         return final_rows
 
     def save_decision_log(self, output_path: Path):

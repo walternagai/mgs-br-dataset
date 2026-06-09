@@ -14,6 +14,10 @@ dataset/*.parquet
 # Ambiente
 .env
 
+# Logs de background
+logs/
+nohup.out
+
 # Saídas geradas — reproduzidas executando adapt_dataset.py
 dataset/train-MGS-BR.csv
 dataset/test-MGS-BR.csv

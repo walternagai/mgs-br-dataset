@@ -2,19 +2,26 @@
 #
 # Executa o script adapt_dataset.py em background com logging adequado.
 #
+# Pré-requisitos:
+#   - Ambiente virtual configurado (make setup)
+#   - Arquivo .env com as chaves de API (cp .env.example .env && edite)
+#
 # Uso:
 #   ./run_background.sh [argumentos para adapt_dataset.py]
 #
 # Exemplos:
-#   ./run_background.sh --provider ollama --model llama3.2:latest --input train-MGS.csv --resume
-#   ./run_background.sh --provider anthropic --input all --resume
+#   ./run_background.sh --provider ollama --model llama3.2:latest --input train-MGS.csv --resume --workers 2
+#   ./run_background.sh --provider anthropic --input all --resume --workers 8
+#   ./run_background.sh --provider groq --input train-MGS.csv --resume --workers 4 --verbose
 #
 # O script:
 #   - Cria diretório logs/ se necessário
-#   - Gera arquivo de log com timestamp
+#   - Gera arquivo de log com timestamp (stdout/stderr bruto do nohup)
+#   - O Python escreve logs estruturados em logs/adapt_dataset.log (nível DEBUG)
 #   - Salva o PID em logs/adapt.pid
 #   - Executa com nohup em background
 #   - Mostra comandos para monitorar e parar o processo
+#   - Ao receber SIGTERM/SIGINT, o Python salva o checkpoint antes de sair
 
 set -euo pipefail
 
@@ -35,8 +42,9 @@ if [ $# -eq 0 ]; then
     echo "Uso: $0 [argumentos para adapt_dataset.py]"
     echo ""
     echo "Exemplos:"
-    echo "  $0 --provider ollama --model llama3.2:latest --input train-MGS.csv --resume"
-    echo "  $0 --provider anthropic --input all --resume"
+    echo "  $0 --provider ollama --model llama3.2:latest --input train-MGS.csv --resume --workers 2"
+    echo "  $0 --provider anthropic --input all --resume --workers 8"
+    echo "  $0 --provider groq --input train-MGS.csv --resume --workers 4 --verbose"
     echo ""
     echo "Use --help para ver todas as opções do adapt_dataset.py"
     exit 1
@@ -47,9 +55,10 @@ mkdir -p "${LOGDIR}"
 echo "============================================"
 echo " Iniciando adapt_dataset.py em background"
 echo "============================================"
-echo " Log      : ${LOGFILE}"
-echo " PID      : será salvo em ${PIDFILE}"
-echo " Comando  : ${PYTHON} adapt_dataset.py $*"
+echo " Log stdout: ${LOGFILE}"
+echo " Log struct: ${LOGDIR}/adapt_dataset.log"
+echo " PID       : será salvo em ${PIDFILE}"
+echo " Comando   : ${PYTHON} adapt_dataset.py $*"
 echo ""
 echo " Monitorar: tail -f ${LOGFILE}"
 echo " Parar    : kill \$(cat ${PIDFILE})"
@@ -76,10 +85,14 @@ echo "${PID}" > "${PIDFILE}"
 echo "Processo iniciado com PID ${PID}"
 echo ""
 echo "Para monitorar o progresso:"
+echo "  # stdout/stderr do nohup (resumo da execução)"
 echo "  tail -f ${LOGFILE}"
 echo ""
-echo "Para parar graciosamente (salva checkpoint):"
+echo "  # logs estruturados do Python (nível DEBUG, inclui respostas brutas)"
+echo "  tail -f ${LOGDIR}/adapt_dataset.log"
+echo ""
+echo "Para parar graciosamente (SIGTERM → salva checkpoint):"
 echo "  kill ${PID}"
 echo ""
-echo "Para parar imediatamente (pode perder checkpoint):"
+echo "Para parar imediatamente (SIGKILL → pode perder checkpoint):"
 echo "  kill -9 ${PID} && rm ${PIDFILE}"

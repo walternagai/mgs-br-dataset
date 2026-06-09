@@ -275,6 +275,8 @@ class LLMClient:
             system=system,
             messages=[{"role": "user", "content": user}],
         )
+        if not msg.content:
+            raise RuntimeError(f"Modelo {self.model} retornou conteúdo vazio")
         return msg.content[0].text
 
     def _call_openai(self, system: str, user: str, max_tokens: int) -> str:
@@ -286,19 +288,63 @@ class LLMClient:
                 {"role": "user",   "content": user},
             ],
         )
-        return resp.choices[0].message.content
+        content = resp.choices[0].message.content
+        if content is None:
+            raise RuntimeError(f"Modelo {self.model} retornou conteúdo vazio")
+        return content
 
 
 def _strip_markdown_fences(text: str) -> str:
     """Remove blocos de código markdown que alguns modelos inserem ao redor do JSON."""
     text = text.strip()
-    if text.startswith("```"):
-        # remove primeira linha (```json ou ```)
+    if not text:
+        return text
+
+    # remove prefixos ``` (possivelmente aninhados)
+    while text.startswith("```"):
         text = text.split("\n", 1)[1] if "\n" in text else text[3:]
-        # remove fechamento ```
-        if text.endswith("```"):
-            text = text[:-3]
-    return text.strip()
+        text = text.strip()
+
+    # remove sufixos ``` (possivelmente aninhados)
+    while text.endswith("```"):
+        text = text[:-3].strip()
+
+    return text
+
+
+def _normalize_parsed_json(result, expected_len: int) -> list[dict] | None:
+    """Garante que o JSON retornado pelo LLM seja sempre uma lista de dicts.
+
+    Retorna None se a estrutura for irrecuperável (dispara retry).
+    """
+    if result is None:
+        return None
+
+    # objeto único → wrap em array
+    if isinstance(result, dict):
+        result = [result]
+
+    if not isinstance(result, list):
+        return None
+
+    # filtra strings/None/números: mantém apenas dicts
+    cleaned = [item for item in result if isinstance(item, dict)]
+
+    # se o array veio vazio ou perdeu todos os itens, falha
+    if not cleaned:
+        return None
+
+    return cleaned
+
+
+def _safe_float(value, default: float = 0.0) -> float:
+    """Converte valor para float, suportando None, str e tipos não numéricos."""
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
 
 
 # ---------------------------------------------------------------------------
@@ -311,6 +357,10 @@ class DatasetAdapter:
         self.decisions: list[dict]        = []
         self.decision_counter: dict[str, int] = defaultdict(int)
         self._lock            = threading.Lock()
+        # métricas de processamento
+        self.batches_ok       = 0
+        self.batches_repaired = 0
+        self.batches_fail     = 0
 
     def _row_id(self, row: dict, idx: int) -> str:
         text = row.get("text_no_marker", "")[:50]
@@ -332,17 +382,28 @@ class DatasetAdapter:
             rows_json=json.dumps(rows_for_api, ensure_ascii=False, indent=2),
         )
 
+        last_raw = ""
         for attempt in range(MAX_RETRIES):
             try:
                 raw = self.llm.complete(SYSTEM_PROMPT, prompt)
+                last_raw = raw
                 raw = _strip_markdown_fences(raw)
-                return json.loads(raw)
+                result = json.loads(raw)
+                norm   = _normalize_parsed_json(result, len(batch))
+                if norm is not None:
+                    self.batches_ok += 1
+                    return norm
+                err = "JSON tipo inválido (não é array de objetos)"
             except json.JSONDecodeError as exc:
                 err = f"JSON inválido: {exc}"
-                # tenta reparo automático antes do retry tradicional
+                # tenta reparo automático antes do retry
                 try:
                     repaired = repair_json(raw)
-                    return json.loads(repaired)
+                    result    = json.loads(repaired)
+                    norm      = _normalize_parsed_json(result, len(batch))
+                    if norm is not None:
+                        self.batches_repaired += 1
+                        return norm
                 except Exception:
                     pass
             except Exception as exc:
@@ -350,48 +411,61 @@ class DatasetAdapter:
 
             if attempt < MAX_RETRIES - 1:
                 wait = RETRY_DELAY * (attempt + 1)
-                print(f"\n  [retry {attempt+1}] {err} — aguardando {wait}s")
+                logger.debug(
+                    "Retry %d/%d batch %s: %s — aguardando %ds",
+                    attempt + 1, MAX_RETRIES,
+                    batch[0]["_id"] if batch else "???", err, wait,
+                )
                 time.sleep(wait)
             else:
+                self.batches_fail += 1
+                logger.error(
+                    "Batch falhou após %d tentativas: %s | resposta (primeiros 500 chars): %s",
+                    MAX_RETRIES, err, last_raw[:500] if last_raw else "(vazia)",
+                )
                 print(f"\n  [falha] lote ignorado após {MAX_RETRIES} tentativas: {err}")
-                return []
+
+        return []
 
     def merge_results(self, original_rows: list[dict], api_results: list[dict]) -> list[dict]:
-        result_map = {r["id"]: r for r in api_results if "id" in r}
+        result_map = {r["id"]: r for r in api_results if isinstance(r, dict) and "id" in r}
         merged = []
         for row in original_rows:
             rid = row["_id"]
             api = result_map.get(rid, {})
             new_row = {k: v for k, v in row.items() if k != "_id"}
 
-            new_row["text_with_marker_br"]  = api.get("text_with_marker_br", "")
-            new_row["text_no_marker_br"]    = api.get("text_no_marker_br", "")
+            new_row["text_with_marker_br"]  = api.get("text_with_marker_br") or ""
+            new_row["text_no_marker_br"]    = api.get("text_no_marker_br") or ""
 
-            raw_type = api.get("stereotype_type_br", row.get("stereotype_type", ""))
-            new_row["stereotype_type_br"] = _TYPE_NORM.get(raw_type.lower().strip(), raw_type) \
-                if raw_type not in _VALID_TYPES else raw_type
+            raw_type = api.get("stereotype_type_br") or row.get("stereotype_type", "")
+            if isinstance(raw_type, str):
+                new_row["stereotype_type_br"] = _TYPE_NORM.get(raw_type.lower().strip(), raw_type) \
+                    if raw_type not in _VALID_TYPES else raw_type
+            else:
+                new_row["stereotype_type_br"] = row.get("stereotype_type", "")
 
             raw_legal = api.get("legal_status_br", "neutro")
             new_row["legal_status_br"]      = raw_legal if raw_legal in _VALID_LEGAL else "neutro"
-            new_row["lei_referencia_br"]    = api.get("lei_referencia_br", "neutro")
-            new_row["confianca_traducao_br"] = api.get("confianca_traducao_br", 0.0)
+            new_row["lei_referencia_br"]    = api.get("lei_referencia_br") or "neutro"
+            new_row["confianca_traducao_br"] = _safe_float(api.get("confianca_traducao_br"), 0.0)
             new_row["decision_id"]          = rid
 
             if api:
                 with self._lock:
                     self.decisions.append({
                         "id":                rid,
-                        "decision_class":    api.get("decision_class", "manutencao"),
-                        "justificativa":     api.get("decision_justificativa", ""),
+                        "decision_class":    api.get("decision_class") or "manutencao",
+                        "justificativa":     api.get("decision_justificativa") or "",
                         "grupo_original_en": row.get("stereotype_type", ""),
-                        "stereotype_type_br": api.get("stereotype_type_br", ""),
-                        "legal_status_br":   api.get("legal_status_br", "neutro"),
-                        "lei_referencia_br": api.get("lei_referencia_br", "neutro"),
-                        "confianca":         api.get("confianca_traducao_br", 0.0),
+                        "stereotype_type_br": api.get("stereotype_type_br") or "",
+                        "legal_status_br":   api.get("legal_status_br") or "neutro",
+                        "lei_referencia_br": api.get("lei_referencia_br") or "neutro",
+                        "confianca":         _safe_float(api.get("confianca_traducao_br"), 0.0),
                         "text_original":     row.get("text_no_marker", "")[:120],
-                        "text_br":           api.get("text_no_marker_br", "")[:120],
+                        "text_br":           (api.get("text_no_marker_br") or "")[:120],
                     })
-                    self.decision_counter[api.get("decision_class", "manutencao")] += 1
+                    self.decision_counter[api.get("decision_class") or "manutencao"] += 1
 
             merged.append(new_row)
         return merged
@@ -529,9 +603,11 @@ class DatasetAdapter:
 
         print(f"\n  Salvo em: {output_path}")
         print(f"  Confianca — alta(>=0.9): {alta} | mod(0.7-0.89): {mod_a} | baixa(<0.5): {baixa}")
+        print(f"  Batches  — ok: {self.batches_ok} | reparados: {self.batches_repaired} | falhos: {self.batches_fail}")
         logger.info(
-            "Concluído: %s -> %s | alta=%d mod=%d baixa=%d",
+            "Concluído: %s -> %s | alta=%d mod=%d baixa=%d | batches ok=%d repaired=%d fail=%d",
             input_path.name, output_path.name, alta, mod_a, baixa,
+            self.batches_ok, self.batches_repaired, self.batches_fail,
         )
         return final_rows
 
@@ -712,11 +788,17 @@ Exemplos:
         "--workers", type=int, default=DEFAULT_WORKERS, metavar="N",
         help=f"Requisições paralelas ao LLM (default: {DEFAULT_WORKERS})",
     )
+    proc.add_argument(
+        "--verbose", action="store_true",
+        help="Exibe respostas brutas do LLM no console (modo debug)",
+    )
     return p
 
 
 def main():
     args    = build_parser().parse_args()
+    if args.verbose:
+        _console_handler.setLevel(logging.DEBUG)
     llm     = resolve_llm(args)
     adapter = DatasetAdapter(llm)
 

@@ -64,15 +64,20 @@ echo " Monitorar: tail -f ${LOGFILE}"
 echo " Parar    : kill \$(cat ${PIDFILE})"
 echo ""
 
-# Se já existe um processo rodando, avisa
+# Se já existe um processo rodando, avisa (e aborta se não houver TTY para confirmar)
 if [ -f "${PIDFILE}" ] && kill -0 "$(cat "${PIDFILE}")" 2>/dev/null; then
     echo "AVISO: Já existe um processo em execução (PID $(cat "${PIDFILE}"))."
     echo "  Para pará-lo: kill $(cat "${PIDFILE}")"
     echo "  Para forçar  : kill -9 $(cat "${PIDFILE}") && rm ${PIDFILE}"
     echo ""
-    read -r -p "Deseja iniciar mesmo assim? [s/N] " resposta
-    if [[ ! "${resposta}" =~ ^[Ss]$ ]]; then
-        exit 0
+    if [ -t 0 ]; then
+        read -r -p "Deseja iniciar mesmo assim? [s/N] " resposta
+        if [[ ! "${resposta}" =~ ^[Ss]$ ]]; then
+            exit 0
+        fi
+    else
+        echo "Entrada não interativa — abortando para evitar execução dupla."
+        exit 1
     fi
 fi
 

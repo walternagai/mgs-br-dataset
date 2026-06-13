@@ -7,7 +7,37 @@ e o versionamento segue o [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ---
 
-## [Unreleased]
+## [0.7.0] — 2026-06-12
+
+### Fixed
+
+- **Lotes falhos não são mais marcados como processados**: apenas linhas efetivamente respondidas pela API entram no checkpoint; linhas de lotes que esgotaram os retries permanecem pendentes e são reprocessadas com `--resume`.
+- **Checkpoint antigo não contamina mais execuções sem `--resume`**: o checkpoint existente é arquivado em `*.bak-<timestamp>` antes de uma execução nova.
+- **IDs retornados pelo LLM agora são validados contra o lote**: respostas parciais ou com IDs trocados disparam retry apenas das linhas faltantes; objetos com IDs desconhecidos são descartados com log.
+- Métricas e log de decisões não se misturam mais entre train e test no modo `--input all` (adapter novo por arquivo).
+
+### Added
+
+- Flag `--retry-failed`: como `--resume`, mas reprocessa também linhas que ficaram sem tradução em execuções anteriores.
+- Tratamento dedicado de rate limit e erros transitórios (429/5xx/timeout) no `LLMClient`: backoff exponencial + jitter, até 8 tentativas, respeito ao header `retry-after` — separado do retry de parsing JSON.
+- Manifesto de proveniência `dataset/<stem>-MGS-BR.run.json` por execução: provedor, modelo, hash da versão do prompt (`PROMPT_VERSION`), parâmetros, métricas e tokens consumidos.
+- Contagem de tokens (entrada/saída/requisições) por arquivo, exibida no resumo e gravada no manifesto.
+- Exportação automática para parquet (`dataset/<stem>-MGS-BR.parquet`, desativável com `--no-parquet`); `pyarrow` adicionado às dependências.
+- `validate_adapted.py` reescrito: exit code 1 em erros (utilizável em CI), `--all`, `--strict`, relatório `--json`, e novas verificações — preservação dos `===marcadores===`, unicidade de `decision_id`, contagem de linhas vs. original, referência legal inespecífica em status criminal, e coerência `label` × `legal_status_br`.
+- Datacard gerado por `python -m mgsbr.datacard` (ou `make datacard`) em `dataset/README.md`.
+- Suíte de testes com pytest (40 testes, LLM falso, sem rede) cobrindo parsing, retry por IDs, checkpoint, resume/retry-failed e validação; configuração de `ruff` em `pyproject.toml`; `requirements-dev.txt` e alvos `make setup-dev`, `make test`, `make lint`.
+- Novos alvos no Makefile: `validate-all`, `retry-failed`, `datacard`, `status`, `clean-all` — `make clean` agora **preserva** os checkpoints (que representam horas de API paga).
+- Métrica `batches_partial` e contagem de linhas sem resposta (`rows_failed`).
+
+### Changed
+
+- **Código modularizado no pacote `mgsbr/`** (`providers`, `prompts`, `parsing`, `checkpoint`, `adapter`, `validate`, `datacard`, `cli`, `runtime`); `adapt_dataset.py` e `validate_adapted.py` viram pontos de entrada finos, mantendo os comandos documentados.
+- Log de decisões agora é por arquivo: `dataset/adaptation-decisions-<stem>.md` (antes um único `adaptation-decisions.md` sobrescrito a cada execução).
+- Loop de progresso usa `concurrent.futures.as_completed` em vez de polling com `time.sleep`.
+- `run_background.sh` aborta em vez de travar no prompt de confirmação quando não há TTY.
+- Esperas de retry interruptíveis pelo shutdown gracioso (`threading.Event.wait` em vez de `time.sleep`).
+
+## [0.6.1] — 2026-06-09
 
 ### Added
 

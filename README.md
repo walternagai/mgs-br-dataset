@@ -148,6 +148,9 @@ cp .env.example .env
 # Retomar processamento interrompido
 .venv/bin/python adapt_dataset.py --input train-MGS.csv --resume
 
+# Reprocessar apenas as linhas que ficaram sem tradução
+.venv/bin/python adapt_dataset.py --input train-MGS.csv --retry-failed
+
 # Amostra para teste rápido
 .venv/bin/python adapt_dataset.py --sample 20 --batch-size 5
 
@@ -167,65 +170,78 @@ cp .env.example .env
 --batch-size N       Linhas por chamada de API (default: 5)
 --workers N          Requisições paralelas ao LLM (default: 4)
 --resume             Retoma a partir do último checkpoint
+--retry-failed       Como --resume, mas também reprocessa linhas sem tradução
+--no-parquet         Não gera a versão .parquet da saída
 --verbose            Exibe respostas brutas do LLM no console (modo debug)
 ```
 
 ### Validação
 
 ```bash
-.venv/bin/python validate_adapted.py dataset/train-MGS-BR.csv
-.venv/bin/python validate_adapted.py dataset/test-MGS-BR.csv
+.venv/bin/python validate_adapted.py dataset/train-MGS-BR.csv   # um arquivo
+.venv/bin/python validate_adapted.py --all                      # todos os *-MGS-BR.csv
+.venv/bin/python validate_adapted.py --all --strict             # atenções viram exit 1
+.venv/bin/python validate_adapted.py --all --json relatorio.json
 ```
 
-A validação reporta:
-- Distribuição de categorias antes/depois
-- Cobertura das novas categorias (`regiao`, `orientacao_sexual`)
+A validação reporta (exit code 1 quando há erros — utilizável em CI):
+- Colunas novas presentes e contagem de linhas vs. arquivo original
+- Distribuição de categorias antes/depois e cobertura de `regiao` / `orientacao_sexual`
 - Distribuição do score de confiança
-- Linhas com `legal_status_br` fora do schema
-- Linhas com `stereotype_type_br` inválido
+- `stereotype_type_br` / `legal_status_br` fora do schema
+- Unicidade de `decision_id`
+- Preservação dos `===marcadores===` nas traduções
+- Status criminal sem referência legal específica (ex.: `Lei` truncada)
+- Linhas `unrelated` classificadas como crime
+- Linhas sem tradução (reprocessáveis com `--retry-failed`)
 
-## Arquitetura do script
+## Arquitetura
+
+A implementação vive no pacote `mgsbr/`; `adapt_dataset.py` e `validate_adapted.py`
+são apenas pontos de entrada finos (compatíveis com os comandos antigos).
 
 ```
-adapt_dataset.py
-│
-├── PROVIDERS dict          — presets de 7 provedores (url, modelo padrão, env var)
-├── _TYPE_NORM dict         — normaliza chaves PT-BR para EN (robustez a modelos menores)
-├── _VALID_TYPES / _VALID_LEGAL — schemas válidos com fallback em merge_results()
-├── _normalize_parsed_json() — garante que a resposta do LLM seja list[dict] (objeto único,
-│                              None, string e tipos não-dict tratados com retry)
-├── _safe_float()           — conversão robusta de float tolerando None e strings
-│
-├── LLMClient               — abstração sobre Anthropic SDK e OpenAI SDK
-│   ├── _call_anthropic()   — usa messages.create() com system separado
-│   │                         levanta RuntimeError se conteúdo for vazio
-│   └── _call_openai()      — usa chat.completions.create() com system em messages[]
-│                             levanta RuntimeError se content for None
-│
-├── DatasetAdapter
-│   ├── adapt_batch()       — chama LLMClient, faz strip de markdown, parse JSON com
-│   │                         validação via _normalize_parsed_json()
-│   │                         retry automático (3x, backoff linear) com json-repair
-│   │                         log da resposta bruta em caso de falha
-│   ├── merge_results()     — une resposta da API com linha original
-│   │                         aplica _TYPE_NORM e validação de _VALID_LEGAL
-│   │                         todos os campos protegidos contra None (or default)
-│   ├── process_file()      — lê CSV, segmenta em batches, executa em paralelo via
-│   │                         ThreadPoolExecutor, escreve checkpoint JSONL thread-safe
-│   │                         reconstrói CSV na ordem original
-│   └── save_decision_log() — gera adaptation-decisions.md agrupado por classe
-│
-├── resolve_llm()           — resolve provedor, modelo, chave e base_url
-├── build_parser()          — argumentos CLI incluindo --workers e --verbose
-└── main()                  — parse de args, orquestra o pipeline, ativa verbose
+mgsbr/
+├── providers.py   — presets de 7 provedores + LLMClient (Anthropic SDK / OpenAI-compatible)
+│                    retry de erros transitórios (429/5xx/timeout) com backoff exponencial
+│                    + jitter, respeito a retry-after, e contagem de tokens (usage)
+├── prompts.py     — system prompt, template de batch, marco legal e PROMPT_VERSION
+│                    (hash sha256 dos prompts, gravado nos manifestos .run.json)
+├── parsing.py     — strip de fences markdown, normalização de JSON (json-repair),
+│                    TYPE_NORM (chaves PT-BR → EN) e schemas válidos
+├── checkpoint.py  — checkpoint JSONL incremental e thread-safe; arquiva checkpoints
+│                    antigos em execuções sem --resume; só linhas respondidas são gravadas
+├── adapter.py     — DatasetAdapter:
+│                    adapt_batch()  valida os IDs retornados e refaz retry apenas dos
+│                                   faltantes; respostas parciais não perdem linhas
+│                    merge_results() une resposta da API com a linha original
+│                    process_file() paraleliza via ThreadPoolExecutor/as_completed,
+│                                   grava CSV + parquet + manifesto .run.json
+│                    save_decision_log() gera adaptation-decisions-<stem>.md
+├── validate.py    — validação com exit code, --all, --strict e relatório --json
+├── datacard.py    — gera dataset/README.md a partir dos CSVs e manifestos
+├── cli.py         — argumentos CLI e orquestração (adapter novo por arquivo)
+└── runtime.py     — logging, sinais SIGTERM/SIGINT e evento de shutdown
 ```
+
+### Testes
+
+```bash
+make setup-dev   # instala pytest e ruff
+make test        # suíte completa (LLM falso, sem rede)
+make lint        # ruff
+```
+
+A suíte cobre parsing, retry por IDs faltantes, integridade do checkpoint
+(linhas falhas não são marcadas como processadas), `--resume`/`--retry-failed`,
+arquivamento de checkpoints antigos e a validação.
 
 ### Logging e tolerância a falhas
 
 - **Console**: nível WARNING (apenas erros e retries), sobe para DEBUG com `--verbose`
 - **Arquivo**: `logs/adapt_dataset.log` com nível DEBUG (todas as requisições, respostas brutas em falhas)
 - **Sinais**: handlers de `SIGTERM`/`SIGINT` salvam checkpoint antes de sair
-- **Métricas**: ao final, exibe contagem de batches ok, reparados e falhos por arquivo
+- **Métricas**: ao final, exibe contagem de batches ok, reparados, parciais e falhos, distribuição de confiança e tokens consumidos por arquivo
 
 ### Execução em background
 
@@ -256,11 +272,24 @@ Valores fora do schema (ex: `"unrelated"`) são silenciosamente substituídos po
 ### Checkpoint por arquivo
 Cada execução grava um JSONL em `.checkpoints/<stem>_checkpoint.jsonl`. O flag `--resume` lê o checkpoint e pula as linhas já processadas, permitindo retomada após falhas de rede ou interrupções. O checkpoint é lido inteiro ao final para reconstruir o CSV, garantindo ordem estável independente da ordem de conclusão dos batches paralelos.
 
+Duas regras de integridade:
+- **Só linhas respondidas pela API entram no checkpoint.** Lotes que falham após todos os retries permanecem pendentes e são reprocessados no próximo `--resume` (antes, eram gravados com tradução vazia e nunca mais reprocessados).
+- **Execuções sem `--resume` arquivam o checkpoint anterior** em `*.bak-<timestamp>` em vez de misturá-lo silenciosamente à nova execução (possivelmente de outro modelo/provedor).
+
+### Validação de IDs por lote
+`adapt_batch()` compara os IDs retornados pelo modelo com os solicitados. Se o modelo devolver menos objetos ou IDs trocados, apenas as linhas faltantes são reenviadas no retry — respostas parciais não desperdiçam o que já veio correto, e objetos com IDs desconhecidos são descartados com log.
+
+### Manifesto de execução (proveniência)
+Cada arquivo processado gera um `dataset/<stem>-MGS-BR.run.json` com provedor, modelo, hash da versão do prompt, parâmetros, métricas de batches, distribuição de confiança e tokens consumidos. Permite saber exatamente como cada saída foi produzida e estimar o custo do dataset completo a partir de um `--sample`.
+
 ### Logging e observabilidade
 Logging estruturado com `logging` da stdlib: console em nível WARNING (sobe para DEBUG com `--verbose`), arquivo em nível DEBUG em `logs/adapt_dataset.log`. Em caso de falha de parsing, os primeiros 500 caracteres da resposta bruta do LLM são registrados no arquivo de log. Métricas de batch (ok/reparados/falhos) são exibidas ao final de cada arquivo.
 
 ### Score de confiança zero
-Linhas do batch cuja resposta JSON foi irrecuperável após 3 retries ficam com `confianca_traducao_br = 0.0` e campos BR vazios. O `validate_adapted.py` sinaliza essas linhas como `← revisar manualmente`.
+Linhas do batch cuja resposta JSON foi irrecuperável após 3 retries ficam com `confianca_traducao_br = 0.0` e campos BR vazios no CSV final — mas **não** entram no checkpoint, então `--resume` ou `--retry-failed` as reprocessa. O `validate_adapted.py` sinaliza essas linhas como `← revisar manualmente`.
+
+### Rate limit e erros transitórios
+Erros 429/5xx/timeout são tratados no `LLMClient` com backoff exponencial + jitter (até 8 tentativas, teto de 60s), respeitando o header `retry-after` quando o SDK o expõe. Esse retry é separado do retry de parsing JSON, portanto um rate limit não consome as tentativas do lote.
 
 ### Diferença EN→PT-BR na classificação legal
 O dataset original usa categorias americanas (Civil Rights Act, Equal Pay Act). A adaptação reclassifica conforme a legislação brasileira. Casos sem equivalente cultural claro recebem `vies_cultural` e `confianca_traducao_br < 0.5`.
@@ -269,11 +298,12 @@ O dataset original usa categorias americanas (Civil Rights Act, Equal Pay Act). 
 
 | Arquivo | Conteúdo |
 |---|---|
-| `dataset/train-MGS-BR.csv` | Dataset de treino adaptado |
-| `dataset/test-MGS-BR.csv` | Dataset de teste adaptado |
-| `dataset/sample-MGS-BR.csv` | Amostra de teste adaptada |
-| `dataset/adaptation-decisions.md` | Log de decisões agrupado por classe |
-| `.checkpoints/*.jsonl` | Checkpoints para retomada (podem ser removidos após conclusão) |
+| `dataset/<stem>-MGS-BR.csv` | Dataset adaptado (train, test ou sample) |
+| `dataset/<stem>-MGS-BR.parquet` | Mesma saída em parquet (desative com `--no-parquet`) |
+| `dataset/<stem>-MGS-BR.run.json` | Manifesto de proveniência da execução |
+| `dataset/adaptation-decisions-<stem>.md` | Log de decisões por arquivo, agrupado por classe |
+| `dataset/README.md` | Datacard gerado por `make datacard` |
+| `.checkpoints/*.jsonl` | Checkpoints para retomada (preservados por `make clean`; removidos só por `make clean-all`) |
 | `logs/adapt_dataset.log` | Log detalhado de execução (nível DEBUG) |
 | `logs/adapt_*.log` | Log de execuções em background |
 
@@ -284,9 +314,12 @@ O dataset original usa categorias americanas (Civil Rights Act, Equal Pay Act). 
 | `anthropic` | 0.107.1 | SDK para Claude (opcional se usar outro provedor) |
 | `openai` | 2.41.0 | SDK para OpenAI e endpoints compatíveis |
 | `pandas` | 2.2.3 | Leitura/escrita de CSV |
+| `pyarrow` | 19.0.1 | Exportação parquet |
 | `python-dotenv` | 1.2.1 | Carregamento de `.env` |
 | `json-repair` | 0.54.2 | Reparo automático de JSON malformado |
 | `tqdm` | 4.68.1 | Barra de progresso |
+
+Dependências de desenvolvimento (`requirements-dev.txt`): `pytest`, `ruff`.
 
 ## Resultado do teste com Ollama (`llama3.2:latest`, 10 linhas)
 

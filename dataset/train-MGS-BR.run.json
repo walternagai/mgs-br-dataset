@@ -1,0 +1,35 @@
+{
+  "input": "train-MGS.csv",
+  "output": "train-MGS-BR.csv",
+  "started_at": "2026-06-13T14:04:34",
+  "finished_at": "2026-06-13T14:04:45",
+  "provider": "ollama",
+  "model": "gemma4:31b-cloud",
+  "prompt_version": "fc748ae0e38f",
+  "batch_size": 5,
+  "workers": 2,
+  "sample": null,
+  "resume": true,
+  "retry_failed": true,
+  "interrupted": false,
+  "rows_total": 42201,
+  "rows_pending_at_start": 10,
+  "rows_without_translation": 0,
+  "confidence": {
+    "alta": 34918,
+    "moderada_alta": 7093,
+    "moderada": 128,
+    "baixa": 62
+  },
+  "batches": {
+    "ok": 2,
+    "repaired": 0,
+    "partial": 0,
+    "fail": 0
+  },
+  "usage": {
+    "requests": 2,
+    "input_tokens": 3694,
+    "output_tokens": 1667
+  }
+}

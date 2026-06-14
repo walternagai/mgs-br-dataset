@@ -1,0 +1,35 @@
+{
+  "input": "test-MGS.csv",
+  "output": "test-MGS-BR.csv",
+  "started_at": "2026-06-13T14:19:56",
+  "finished_at": "2026-06-13T19:34:00",
+  "provider": "ollama",
+  "model": "gemma4:31b-cloud",
+  "prompt_version": "fc748ae0e38f",
+  "batch_size": 5,
+  "workers": 2,
+  "sample": null,
+  "resume": true,
+  "retry_failed": false,
+  "interrupted": false,
+  "rows_total": 10550,
+  "rows_pending_at_start": 10550,
+  "rows_without_translation": 63,
+  "confidence": {
+    "alta": 8675,
+    "moderada_alta": 1767,
+    "moderada": 29,
+    "baixa": 79
+  },
+  "batches": {
+    "ok": 2094,
+    "repaired": 4,
+    "partial": 0,
+    "fail": 12
+  },
+  "usage": {
+    "requests": 2102,
+    "input_tokens": 3927951,
+    "output_tokens": 1946001
+  }
+}
